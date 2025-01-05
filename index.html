@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver's License Scanner</title>
+    <script src="https://cdn.jsdelivr.net/npm/@zxing/library@latest/umd/index.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.1/umd/index.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #interactive.viewport {
+            position: relative;
+            width: 100%;
+            height: 300px;
+        }
+        #interactive.viewport > video {
+            width: 100%;
+            height: 100%;
+        }
+        .panel {
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        #debug-panel {
+            background-color: #f5f5f5;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .upload-section {
+            margin: 20px 0;
+            padding: 40px;
+            border: 3px dashed #ccc;
+            border-radius: 8px;
+            text-align: center;
+            background-color: #f8f9fa;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .upload-section:hover {
+            background-color: #e9ecef;
+            border-color: #007bff;
+        }
+        .upload-section input[type="file"] {
+            display: none;
+        }
+        .upload-button {
+            display: inline-block;
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        .upload-button:hover {
+            background-color: #0056b3;
+        }
+        .upload-icon {
+            font-size: 48px;
+            color: #6c757d;
+            margin-bottom: 15px;
+        }
+        .tab-buttons {
+            margin-bottom: 20px;
+        }
+        .tab-buttons button {
+            padding: 10px 20px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        .tab-buttons button.active {
+            background-color: #007bff;
+            color: white;
+            border: none;
+        }
+        .download-link {
+            display: inline-block;
+            padding: 5px 10px;
+            background-color: #28a745;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-top: 5px;
+        }
+        .download-link:hover {
+            background-color: #218838;
+        }
+        .country-control-panel {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        .country-selector {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ced4da;
+            width: 200px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Driver's License Scanner</h1>
+
+    <div class="tab-buttons">
+        <button id="camera-tab" class="active">Use Camera</button>
+        <button id="upload-tab">Upload Image</button>
+    </div>
+
+    <div id="camera-section">
+        <div id="interactive" class="viewport"></div>
+    </div>
+
+    <div id="upload-section" class="upload-section" style="display: none;">
+        <div class="upload-icon">📁</div>
+        <input type="file" id="file-input" accept="image/*">
+        <label for="file-input" class="upload-button">
+            Choose Image
+        </label>
+        <p>or drag and drop an image here</p>
+        <img id="preview-image" style="max-width: 100%; max-height: 300px; display: none; margin-top: 20px;">
+    </div>
+
+    <div id="result" class="panel">
+        <h2>Scanned Information:</h2>
+        <pre id="parsed-result"></pre>
+    </div>
+
+    <div id="debug-panel" class="panel">
+        <h2>Debug Information:</h2>
+        <div id="debug-content"></div>
+    </div>
+
+    <script src="/scanner.js"></script>
+</body>
+</html> 
