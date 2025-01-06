@@ -181,6 +181,9 @@ class DriversLicenseParser {
 
     parseAAMVAData(data) {
         const fields = {
+            DCA: 'Jurisdiction-specific vehicle class',
+            DCB: 'Jurisdiction-specific restriction codes',
+            DCD: 'Jurisdiction-specific endorsement codes',
             DBA: 'Expiration Date',
             DCS: 'Last Name',
             DCT: 'First Name',

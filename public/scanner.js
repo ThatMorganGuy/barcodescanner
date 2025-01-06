@@ -6,8 +6,6 @@ class DriversLicenseParser {
         this.isScanning = false;
         this.canvas = document.createElement('canvas');
         this.ctx = this.canvas.getContext('2d');
-        this.currentCountry = 'USA'; // Default to USA
-        this.setupCountrySelector();
     }
 
     debug(message) {
@@ -102,40 +100,8 @@ class DriversLicenseParser {
             this.debug('Loading image...');
             const image = await this.loadImage(previewImage);
             
-            // Create multiple canvases with different sizes for better detection
-            const scales = [1, 1.5, 0.75]; // Try original size, larger, and smaller
-            let result = null;
-
-            for (let scale of scales) {
-                if (result) break; // Stop if we already found a barcode
-
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                
-                canvas.width = image.naturalWidth * scale;
-                canvas.height = image.naturalHeight * scale;
-                
-                // Use better image rendering
-                ctx.imageSmoothingEnabled = true;
-                ctx.imageSmoothingQuality = 'high';
-                
-                // Draw image with current scale
-                ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-                
-                this.debug(`Trying scale ${scale}x (${canvas.width}x${canvas.height})...`);
-                
-                try {
-                    // Try different methods for each scale
-                    try {
-                        result = await this.codeReader.decodeFromCanvas(canvas);
-                    } catch (e) {
-                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                        result = await this.codeReader.decodeFromImageData(imageData);
-                    }
-                } catch (error) {
-                    this.debug(`Attempt at scale ${scale}x failed`);
-                }
-            }
+            this.debug('Scanning for barcode...');
+            const result = await this.codeReader.decodeFromImage(image);
             
             if (result) {
                 this.debug('Barcode detected and decoded successfully');
@@ -145,24 +111,14 @@ class DriversLicenseParser {
             }
         } catch (error) {
             this.debug(`Error processing image: ${error.message}`);
-            this.debug('Tips for better scanning:');
-            this.debug('1. Ensure the barcode is clearly visible and not cut off');
-            this.debug('2. Try a higher resolution image');
-            this.debug('3. Make sure the image is well-lit and in focus');
-            this.debug('4. Try rotating the image if barcode is vertical');
-        } finally {
-            URL.revokeObjectURL(previewImage.src);
+            previewImage.style.display = 'none';
         }
     }
 
     loadImage(imgElement) {
         return new Promise((resolve, reject) => {
-            if (imgElement.complete) {
-                resolve(imgElement);
-            } else {
-                imgElement.onload = () => resolve(imgElement);
-                imgElement.onerror = () => reject(new Error('Failed to load image'));
-            }
+            imgElement.onload = () => resolve(imgElement);
+            imgElement.onerror = reject;
         });
     }
 
@@ -207,26 +163,14 @@ class DriversLicenseParser {
         if (!this.isScanning) return;
         
         try {
-            // Try multiple frames before giving up
-            let attempts = 0;
-            const maxAttempts = 3;
-            let result = null;
-
-            while (attempts < maxAttempts && !result && this.isScanning) {
-                try {
-                    result = await this.codeReader.decodeFromVideoElement(this.videoElement);
-                } catch (err) {
-                    attempts++;
-                    await new Promise(resolve => setTimeout(resolve, 100)); // Small delay between attempts
-                }
-            }
-
+            const result = await this.codeReader.decodeFromVideoElement(this.videoElement);
             if (result) {
                 this.debug('Barcode detected from camera');
+                
+                // Capture and save the frame
                 await this.captureFrame();
+                
                 this.parseAndDisplayResult(result.text);
-                // Add small pause after successful scan to prevent multiple rapid scans
-                await new Promise(resolve => setTimeout(resolve, 1000));
             }
         } catch (err) {
             // Ignore errors and continue scanning
@@ -277,53 +221,16 @@ class DriversLicenseParser {
 
     parseAndDisplayResult(rawData) {
         this.debug('Raw data received: ' + rawData.substring(0, 50) + '...');
-        let parsedData;
-        
-        // Try to auto-detect country format if possible
-        const detectedCountry = this.detectCountryFormat(rawData);
-        if (detectedCountry) {
-            this.debug(`Detected ${detectedCountry} format`);
-            this.currentCountry = detectedCountry;
-            document.getElementById('country-selector').value = detectedCountry;
-        }
-
-        switch (this.currentCountry) {
-            case 'USA':
-                parsedData = this.parseAAMVAData(rawData);
-                break;
-            case 'CAN':
-                parsedData = this.parseCanadianData(rawData);
-                break;
-            case 'MEX':
-                parsedData = this.parseMexicanData(rawData);
-                break;
-            case 'GBR':
-                parsedData = this.parseUKData(rawData);
-                break;
-            case 'AUS':
-                parsedData = this.parseAustralianData(rawData);
-                break;
-            default:
-                parsedData = this.parseAAMVAData(rawData); // Fallback to AAMVA
-        }
-
+        const parsedData = this.parseAAMVAData(rawData);
         document.getElementById('parsed-result').textContent = 
             JSON.stringify(parsedData, null, 2);
     }
 
-    detectCountryFormat(rawData) {
-        // Simple country format detection based on common patterns
-        if (rawData.includes('ANSI ')) return 'USA';
-        if (rawData.includes('PCCA')) return 'CAN';
-        if (rawData.includes('DCMX')) return 'MEX';
-        if (rawData.includes('GBDL')) return 'GBR';
-        if (rawData.includes('AUDL')) return 'AUS';
-        return null;
-    }
-
-    // Existing AAMVA parser (renamed for clarity)
     parseAAMVAData(data) {
         const fields = {
+            DCA: 'Jurisdiction-specific vehicle class',
+            DCB: 'Jurisdiction-specific restriction codes',
+            DCD: 'Jurisdiction-specific endorsement codes',
             DBA: 'Expiration Date',
             DCS: 'Last Name',
             DCT: 'First Name',
@@ -352,111 +259,6 @@ class DriversLicenseParser {
         });
 
         return parsed;
-    }
-
-    parseCanadianData(data) {
-        const fields = {
-            'PCN': 'License Number',
-            'DCS': 'Last Name',
-            'DCT': 'First Name',
-            'DBB': 'Date of Birth',
-            'DBA': 'Expiry Date',
-            'DAG': 'Street Address',
-            'DAI': 'City',
-            'DAJ': 'Province',
-            'DAK': 'Postal Code',
-            'DBC': 'Gender',
-            'DAY': 'Eye Color',
-            'DAU': 'Height'
-        };
-        return this.genericParser(data, fields);
-    }
-
-    parseMexicanData(data) {
-        const fields = {
-            'DCF': 'CURP',
-            'DCS': 'Apellido',
-            'DCT': 'Nombre',
-            'DBB': 'Fecha de Nacimiento',
-            'DBA': 'Fecha de Vencimiento',
-            'DAG': 'Dirección',
-            'DAI': 'Ciudad',
-            'DAJ': 'Estado',
-            'DAK': 'Código Postal'
-        };
-        return this.genericParser(data, fields);
-    }
-
-    parseUKData(data) {
-        const fields = {
-            'DCF': 'License Number',
-            'DCS': 'Surname',
-            'DCT': 'Given Names',
-            'DBB': 'Date of Birth',
-            'DBA': 'Expiry Date',
-            'DAG': 'Address',
-            'DAI': 'City',
-            'DAJ': 'County',
-            'DAK': 'Post Code'
-        };
-        return this.genericParser(data, fields);
-    }
-
-    parseAustralianData(data) {
-        const fields = {
-            'DCF': 'License Number',
-            'DCS': 'Surname',
-            'DCT': 'Given Names',
-            'DBB': 'Date of Birth',
-            'DBA': 'Expiry Date',
-            'DAG': 'Address',
-            'DAI': 'Suburb',
-            'DAJ': 'State',
-            'DAK': 'Postcode'
-        };
-        return this.genericParser(data, fields);
-    }
-
-    // Generic parser that can be used by all country-specific parsers
-    genericParser(data, fields) {
-        const parsed = {};
-        const segments = data.split('\n');
-
-        segments.forEach(segment => {
-            const code = segment.substring(0, 3);
-            const value = segment.substring(3).trim();
-            
-            if (fields[code]) {
-                parsed[fields[code]] = value;
-            }
-        });
-
-        return parsed;
-    }
-
-    setupCountrySelector() {
-        // Add country selector to the page
-        const controlPanel = document.createElement('div');
-        controlPanel.className = 'country-control-panel';
-        controlPanel.innerHTML = `
-            <select id="country-selector" class="country-selector">
-                <option value="USA">United States</option>
-                <option value="CAN">Canada</option>
-                <option value="MEX">Mexico</option>
-                <option value="GBR">United Kingdom</option>
-                <option value="AUS">Australia</option>
-            </select>
-        `;
-        
-        // Insert after the tab buttons
-        const tabButtons = document.querySelector('.tab-buttons');
-        tabButtons.parentNode.insertBefore(controlPanel, tabButtons.nextSibling);
-
-        // Add event listener
-        document.getElementById('country-selector').addEventListener('change', (e) => {
-            this.currentCountry = e.target.value;
-            this.debug(`Switched to ${e.target.value} format`);
-        });
     }
 }
 
