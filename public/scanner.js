@@ -102,40 +102,38 @@ class DriversLicenseParser {
             this.debug('Loading image...');
             const image = await this.loadImage(previewImage);
             
-            // Create a canvas and draw the image
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            
-            // Set canvas size to match image
-            canvas.width = image.naturalWidth;
-            canvas.height = image.naturalHeight;
-            
-            // Draw image to canvas
-            ctx.drawImage(image, 0, 0);
-            
-            // Get image data
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            
-            this.debug(`Scanning image (${canvas.width}x${canvas.height})...`);
-            
-            // Try different approaches to decode
+            // Create multiple canvases with different sizes for better detection
+            const scales = [1, 1.5, 0.75]; // Try original size, larger, and smaller
             let result = null;
-            try {
-                // Try direct image decode
-                result = await this.codeReader.decodeFromImage(image);
-            } catch (e) {
-                this.debug('First attempt failed, trying alternative method...');
+
+            for (let scale of scales) {
+                if (result) break; // Stop if we already found a barcode
+
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                canvas.width = image.naturalWidth * scale;
+                canvas.height = image.naturalHeight * scale;
+                
+                // Use better image rendering
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                
+                // Draw image with current scale
+                ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+                
+                this.debug(`Trying scale ${scale}x (${canvas.width}x${canvas.height})...`);
+                
                 try {
-                    // Try with ImageData
-                    result = await this.codeReader.decodeFromImageData(imageData);
-                } catch (e2) {
-                    this.debug('Second attempt failed, trying with canvas...');
+                    // Try different methods for each scale
                     try {
-                        // Try with canvas element
                         result = await this.codeReader.decodeFromCanvas(canvas);
-                    } catch (e3) {
-                        throw new Error('All decode attempts failed');
+                    } catch (e) {
+                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                        result = await this.codeReader.decodeFromImageData(imageData);
                     }
+                } catch (error) {
+                    this.debug(`Attempt at scale ${scale}x failed`);
                 }
             }
             
@@ -148,12 +146,11 @@ class DriversLicenseParser {
         } catch (error) {
             this.debug(`Error processing image: ${error.message}`);
             this.debug('Tips for better scanning:');
-            this.debug('1. Ensure the barcode is clearly visible');
+            this.debug('1. Ensure the barcode is clearly visible and not cut off');
             this.debug('2. Try a higher resolution image');
             this.debug('3. Make sure the image is well-lit and in focus');
-            this.debug('4. Avoid glare or reflections on the barcode');
+            this.debug('4. Try rotating the image if barcode is vertical');
         } finally {
-            // Clean up object URL
             URL.revokeObjectURL(previewImage.src);
         }
     }
@@ -210,14 +207,26 @@ class DriversLicenseParser {
         if (!this.isScanning) return;
         
         try {
-            const result = await this.codeReader.decodeFromVideoElement(this.videoElement);
+            // Try multiple frames before giving up
+            let attempts = 0;
+            const maxAttempts = 3;
+            let result = null;
+
+            while (attempts < maxAttempts && !result && this.isScanning) {
+                try {
+                    result = await this.codeReader.decodeFromVideoElement(this.videoElement);
+                } catch (err) {
+                    attempts++;
+                    await new Promise(resolve => setTimeout(resolve, 100)); // Small delay between attempts
+                }
+            }
+
             if (result) {
                 this.debug('Barcode detected from camera');
-                
-                // Capture and save the frame
                 await this.captureFrame();
-                
                 this.parseAndDisplayResult(result.text);
+                // Add small pause after successful scan to prevent multiple rapid scans
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
         } catch (err) {
             // Ignore errors and continue scanning
